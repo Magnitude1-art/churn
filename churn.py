@@ -1,58 +1,93 @@
+# model.py
 import streamlit as st
 import pandas as pd
-from sklearn.metrics import mean_absolute_error
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-#from sklearn.svm import SVR
-lin_reg=LinearRegression()
-model2 = RandomForestRegressor()
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.linear_model import LogisticRegression
 
-churn_frame_test = pd.read_csv('customer_churn_dataset-testing-master.csv')
-object_column = ['Gender','Subscription Type', 'Contract Length']
-from sklearn.preprocessing import LabelEncoder
+# ---------------------------
+# Step 1: Load dataset
+# ---------------------------
+data = pd.read_csv("customer_churn_dataset-testing-master.csv")
+
+# ---------------------------
+# Step 2: Encode categorical columns
+# ---------------------------
 le = LabelEncoder()
-for col in object_column:
-    churn_frame_test[col] = le.fit_transform(churn_frame_test[col])
+for col in data.select_dtypes(include='object').columns:
+    data[col] = le.fit_transform(data[col])
 
-churn_frame_train = pd.read_csv('customer_churn_dataset-training-master.csv')
-from sklearn.preprocessing import OrdinalEncoder
-ordinal_encoder = OrdinalEncoder()
-gender = churn_frame_train[["Gender"]]
-subscriptiontype = churn_frame_train[["Subscription Type"]]
-contractlength = churn_frame_train[["Contract Length"]]
-gender_encoded = ordinal_encoder.fit_transform(gender)
-subscriptiontype_encoded = ordinal_encoder.fit_transform(subscriptiontype)
-contractlength_encoded = ordinal_encoder.fit_transform(contractlength)
-churn_frame_train["Gender"] = gender_encoded
-churn_frame_train["Subscription Type"] = subscriptiontype_encoded
-churn_frame_train["Contract Length"] = contractlength_encoded
-churn_frame_train_clean=churn_frame_train.dropna(how='all')
+# ---------------------------
+# Step 3: Split features and target
+# ---------------------------
+X = data.drop("Churn", axis=1)
+y = data["Churn"]
 
-x_train = churn_frame_train_clean[list(churn_frame_train.columns)[0: -1]]
-y_train = churn_frame_train_clean['Churn']
-x_test = churn_frame_test[list(churn_frame_test.columns)[0: -1]]
-y_test = churn_frame_test['Churn']
+# ---------------------------
+# Step 4: Split train/test
+# ---------------------------
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-lin_reg.fit(x_train, y_train)
-pred1=lin_reg.predict(x_test)
+# ---------------------------
+# Step 5: Scale features
+# ---------------------------
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-model2.fit(x_train, y_train)
-pred2 = model2.predict(x_test)
+# ---------------------------
+# Step 6: Train Logistic Regression model
+# ---------------------------
+model = LogisticRegression()
+model.fit(X_train_scaled, y_train)
 
-error_lin_reg = round(mean_absolute_error(y_test, pred1), 2)
-error_pred2 = round(mean_absolute_error(y_test, pred2), 2)
-print('MAE (Error):',error_lin_reg)
-print('MAE (Error):',error_pred2)
+# ---------------------------
+# Step 7: Streamlit UI
+# ---------------------------
+st.title("📊 Customer Churn Prediction System")
+st.write("Predict whether a customer will churn based on their details.")
 
-units = st.radio("Select Machine Learning model type:",["Linear Regression","Random Forest"])
-if units == "Linear Regression":
-    #celsius = st.number_input("Enter temperature in Centigrade")
-    #convertedtemp   =9/5 * celsius + 32
-    #if st.button("Equivalent temperature in Fahrenheit?"):
-    
-        st.write('MAE (Error):',error_lin_reg)
-else:
-    #fahrenheit =  st.number_input("Enter temperature in Fahrenheit")
-    #convertedtemp =(fahrenheit - 32) * 5/9
-    #if st.button("Equivalent temperature in Celsius?"):
-       st.write('MAE (Error):',error_pred2)
+st.header("🧮 Enter Customer Details")
+
+# Input fields
+customer_id = st.number_input("CustomerID", min_value=1, value=1, step=1)
+age = st.number_input("Age", min_value=0, max_value=120, value=30, step=1)
+gender = st.selectbox("Gender", ["Male", "Female"])
+tenure = st.number_input("Tenure (months)", min_value=0, max_value=600, value=12, step=1)
+usage_frequency = st.number_input("Usage Frequency", min_value=0, max_value=1000, value=100, step=1)
+support_calls = st.number_input("Support Calls", min_value=0, max_value=1000, value=0, step=1)
+payment_delay = st.number_input("Payment Delay", min_value=0, max_value=100, value=0, step=1)
+subscription_type = st.selectbox("Subscription Type", ["Basic", "Premium", "Other"])
+contract_length = st.number_input("Contract Length", min_value=0, max_value=1000, value=12, step=1)
+total_spend = st.number_input("Total Spend", min_value=0, max_value=100000, value=1000, step=1)
+last_interaction = st.number_input("Last Interaction (days)", min_value=0, max_value=365, value=10, step=1)
+
+# Button to predict
+if st.button("Predict Churn"):
+    # Prepare input DataFrame matching training features
+    input_data = pd.DataFrame({
+        "CustomerID": [customer_id],
+        "Age": [age],
+        "Gender": [1 if gender.lower() == "male" else 0],
+        "Tenure": [tenure],
+        "Usage Frequency": [usage_frequency],
+        "Support Calls": [support_calls],
+        "Payment Delay": [payment_delay],
+        "Subscription Type": [1 if subscription_type.lower() == "premium" else 0],
+        "Contract Length": [contract_length],
+        "Total Spend": [total_spend],
+        "Last Interaction": [last_interaction]
+    })
+
+    # Scale input
+    input_scaled = scaler.transform(input_data)
+
+    # Predict
+    prediction = model.predict(input_scaled)[0]
+    probability = model.predict_proba(input_scaled)[0][1]
+
+    # Show result
+    if prediction == 1:
+        st.error(f"⚠️ The customer is likely to CHURN. (Probability: {probability:.2f})")
+    else:
+        st.success(f"✅ The customer is NOT likely to churn. (Probability: {probability:.2f})")
